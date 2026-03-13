@@ -1,0 +1,305 @@
+<html>
+<head>
+  <!-- html5-qrcode for scanning -->
+  <script src=<link rel="manifest" href="manifest.json">
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js');
+  });
+}
+</script>"https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <!-- SheetJS for XLSX -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <!-- jsPDF + AutoTable for PDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.3/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body>
+  <h2>Attendance Scanner</h2>
+  <div id="reader" style="width:320px; height:320px; margin:10px auto; border:1px solid #ccc;"></div>
+
+  <button onclick="startScan()">Start Scanning (Rear Camera)</button>
+  <button onclick="stopScan()">Stop Scanning</button>
+  <button onclick="loadSavedData()" style="margin-left:10px; padding:10px 16px; background:#757575; color:white; border:none; border-radius:4px; cursor:pointer;">
+    Auto-Load Saved Data
+  </button>
+
+  <div id="status" style="color:red; margin:10px; min-height:20px;"></div>
+
+  <h3>Scanned Participants (<span id="count">0</span>)</h3>
+  <ul id="list" style="max-height:220px; overflow-y:auto; list-style:none; padding:0;"></ul>
+
+  <div style="margin-top:20px; text-align:center;">
+    <h4>Export As:</h4>
+    <button onclick="exportFile('xlsx')" style="margin:8px; padding:10px 16px; background:#1e88e5; color:white; border:none; border-radius:4px; cursor:pointer;">
+      Excel (.xlsx)
+    </button>
+    <button onclick="exportFile('csv')" style="margin:8px; padding:10px 16px; background:#43a047; color:white; border:none; border-radius:4px; cursor:pointer;">
+      CSV
+    </button>
+    <button onclick="exportFile('pdf')" style="margin:8px; padding:10px 16px; background:#e53935; color:white; border:none; border-radius:4px; cursor:pointer;">
+      PDF
+    </button>
+    <button onclick="exportFile('doc')" style="margin:8px; padding:10px 16px; background:#fb8c00; color:white; border:none; border-radius:4px; cursor:pointer;">
+      Word (.doc)
+    </button>
+
+    <br><br>
+
+    <button onclick="confirmEraseAll()" style="margin:12px; padding:12px 24px; background:#d32f2f; color:white; border:none; border-radius:6px; font-size:16px; cursor:pointer; font-weight:bold;">
+      Erase All (ONLY Erase TESTING Data)
+    </button>
+  </div>
+
+  <script>
+    let html5QrcodeScanner;
+    let attendanceData = [];
+    const statusDiv = document.getElementById('status');
+    const listUl = document.getElementById('list');
+    const countSpan = document.getElementById('count');
+    const STORAGE_KEY = 'attendanceData';
+
+    // ¢w¢w Duplicate / spam prevention variables ¢w¢w
+    let lastScanTime = 0;
+    let lastDuplicateAlertTime = 0;
+    const MIN_TIME_BETWEEN_SCANS_MS = 1000;      // ignore anything faster than this
+    const DUPLICATE_ALERT_COOLDOWN_MS = 10000;   // don't show duplicate alert again for 4 seconds
+
+    // Auto-save every 5 seconds
+    setInterval(saveData, 5000);
+
+    function saveData() {
+      if (attendanceData.length > 0) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(attendanceData));
+      }
+    }
+
+    function loadSavedData() {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        attendanceData = JSON.parse(saved);
+        updateUI();
+        statusDiv.style.color = 'green';
+        statusDiv.textContent = 'Latest saved data loaded!';
+        setTimeout(() => { statusDiv.textContent = ''; }, 3000);
+      } else {
+        statusDiv.style.color = 'red';
+        statusDiv.textContent = 'No saved data found.';
+        setTimeout(() => { statusDiv.textContent = ''; }, 3000);
+      }
+    }
+
+    function updateUI() {
+      listUl.innerHTML = '';
+      attendanceData.forEach(entry => {
+        listUl.innerHTML += `<li style="padding:6px 0; border-bottom:1px solid #eee;">${entry.Name} ¡X ${entry.Timestamp}</li>`;
+      });
+      countSpan.textContent = attendanceData.length;
+    }
+
+    function isAlreadyScanned(name) {
+      const normalized = name.trim().toLowerCase();
+      return attendanceData.find(entry => entry.Name.trim().toLowerCase() === normalized);
+    }
+
+    function onScanSuccess(decodedText) {
+      const trimmed = decodedText.trim();
+      if (!trimmed) return;
+
+      const now = Date.now();
+
+      // 1. Global minimum time between any two successful decodes
+      if (now - lastScanTime < MIN_TIME_BETWEEN_SCANS_MS) {
+        return; // too fast ¡÷ ignore silently
+      }
+      lastScanTime = now;
+
+      const existing = isAlreadyScanned(trimmed);
+
+      if (existing) {
+        // Don't spam duplicate alerts while camera is still on the same QR
+        if (now - lastDuplicateAlertTime < DUPLICATE_ALERT_COOLDOWN_MS) {
+          return; // silent ignore during cooldown
+        }
+
+        // Show alert once per cooldown period
+        const prevTime = existing.Timestamp;
+        alert(
+          "Duplicate Record\n\n" +
+          "This QR code has already been scanned.\n\n" +
+          "Previous record:\n" +
+          "Name: " + existing.Name + "\n" +
+          "Time:  " + prevTime + "\n\n" +
+          "Please cross-check if this is correct.\n" +
+          "Click OK to continue scanning."
+        );
+
+        lastDuplicateAlertTime = now;
+
+        statusDiv.style.color = 'orange';
+        statusDiv.textContent = 'Duplicate detected ¡V record not added';
+        setTimeout(() => { statusDiv.textContent = ''; }, 4000);
+
+        return; // do NOT add duplicate
+      }
+
+      // ¢w¢w New valid entry ¢w¢w
+      const timestamp = new Date().toLocaleString('en-US', { timeZone: 'Asia/Hong_Kong' });
+      const entry = { Name: trimmed, Timestamp: timestamp };
+      attendanceData.push(entry);
+
+      listUl.innerHTML += `<li style="padding:6px 0; border-bottom:1px solid #eee;">${entry.Name} ¡X ${entry.Timestamp}</li>`;
+      countSpan.textContent = attendanceData.length;
+
+      statusDiv.style.color = 'green';
+      statusDiv.textContent = `Added: ${trimmed}`;
+      setTimeout(() => { statusDiv.textContent = ''; }, 2500);
+
+      saveData();
+    }
+
+    function onScanError(err) {
+      if (err.includes && err.includes('No MultiFormat Readers')) return;
+    }
+
+    function startScan() {
+      statusDiv.style.color = 'blue';
+      statusDiv.textContent = 'Starting camera... Allow access if prompted.';
+      html5QrcodeScanner = new Html5Qrcode("reader");
+      const config = { fps: 10, qrbox: {width: 280, height: 280}, aspectRatio: 1.0 };
+      html5QrcodeScanner.start(
+        { facingMode: "environment" },
+        config,
+        onScanSuccess,
+        onScanError
+      ).catch(err => {
+        statusDiv.style.color = 'orange';
+        statusDiv.textContent = 'Rear failed ¡÷ trying front...';
+        html5QrcodeScanner.start(
+          { facingMode: "user" },
+          config,
+          onScanSuccess,
+          onScanError
+        ).catch(e => {
+          statusDiv.style.color = 'red';
+          statusDiv.textContent = 'Camera failed: ' + (e.message || e);
+          alert('Camera issue.\n¡E Use HTTPS (CodePen/GitHub Pages/local server)\n¡E Grant permission\n¡E Close other camera apps');
+        });
+      });
+    }
+
+    function stopScan() {
+      if (html5QrcodeScanner) {
+        html5QrcodeScanner.stop().then(() => {
+          statusDiv.textContent = 'Stopped.';
+        });
+      }
+    }
+
+    function confirmEraseAll() {
+      const confirmed = confirm(
+        "Are you sure you want to ERASE ALL currently loaded attendance data?\n\n" +
+        "This will:\n" +
+        "¡E Clear the list on screen\n" +
+        "¡E Delete the auto-saved data from your browser\n" +
+        "¡E This action CANNOT be undone!\n\n" +
+        "Only click OK if this is test/practice data."
+      );
+
+      if (confirmed) {
+        attendanceData = [];
+        localStorage.removeItem(STORAGE_KEY);
+        listUl.innerHTML = '';
+        countSpan.textContent = '0';
+
+        statusDiv.style.color = '#d32f2f';
+        statusDiv.textContent = 'All testing data erased successfully.';
+        setTimeout(() => { statusDiv.textContent = ''; }, 5000);
+      } else {
+        statusDiv.style.color = 'orange';
+        statusDiv.textContent = 'Erase cancelled.';
+        setTimeout(() => { statusDiv.textContent = ''; }, 3000);
+      }
+    }
+
+    function exportFile(format) {
+      if (attendanceData.length === 0) {
+        alert('No records to export!');
+        return;
+      }
+      const dateStr = new Date().toISOString().slice(0,10);
+      const filenameBase = `Attendance_${dateStr}`;
+
+      if (format === 'xlsx') {
+        const ws = XLSX.utils.json_to_sheet(attendanceData);
+        ws['!cols'] = [{wch:30}, {wch:25}];
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Attendance");
+        XLSX.writeFile(wb, filenameBase + ".xlsx");
+      }
+      else if (format === 'csv') {
+        let csv = 'Name,Timestamp\n';
+        attendanceData.forEach(row => {
+          csv += `"${row.Name.replace(/"/g,'""')}","${row.Timestamp.replace(/"/g,'""')}"\n`;
+        });
+        const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filenameBase + ".csv";
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+      else if (format === 'pdf') {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        doc.setFontSize(18);
+        doc.text("Attendance Record", 14, 22);
+        doc.setFontSize(11);
+        doc.text(`Generated: ${new Date().toLocaleString('en-US', { timeZone: 'Asia/Hong_Kong' })}`, 14, 30);
+        doc.autoTable({
+          startY: 40,
+          head: [['Name', 'Timestamp']],
+          body: attendanceData.map(row => [row.Name, row.Timestamp]),
+          theme: 'grid',
+          styles: { fontSize: 10, cellPadding: 3 },
+          headStyles: { fillColor: [66, 139, 202] },
+          alternateRowStyles: { fillColor: [240, 240, 240] },
+          columnStyles: { 0: { cellWidth: 90 }, 1: { cellWidth: 80 } }
+        });
+        doc.save(filenameBase + ".pdf");
+      }
+      else if (format === 'doc') {
+        let html = `
+          <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">
+          <head><meta charset="utf-8"><title>Attendance</title></head>
+          <body>
+            <h1>Attendance Record</h1>
+            <p>Generated: ${new Date().toLocaleString('en-US', { timeZone: 'Asia/Hong_Kong' })}</p>
+            <table border="1" style="border-collapse:collapse; width:100%;">
+              <tr style="background:#428bca; color:white;">
+                <th style="padding:8px;">Name</th>
+                <th style="padding:8px;">Timestamp</th>
+              </tr>
+        `;
+        attendanceData.forEach(row => {
+          html += `<tr><td style="padding:6px;">${row.Name}</td><td style="padding:6px;">${row.Timestamp}</td></tr>`;
+        });
+        html += `</table></body></html>`;
+        const blob = new Blob([html], {type: 'application/msword'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filenameBase + ".doc";
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      statusDiv.style.color = 'green';
+      statusDiv.textContent = `${format.toUpperCase()} exported!`;
+      setTimeout(() => statusDiv.textContent = '', 3000);
+    }
+  </script>
+</body>
+</html>
