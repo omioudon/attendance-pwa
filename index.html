@@ -60,7 +60,7 @@ if ('serviceWorker' in navigator) {
     const countSpan = document.getElementById('count');
     const STORAGE_KEY = 'attendanceData';
 
-    // ¢w¢w Duplicate / spam prevention variables ¢w¢w
+    // Â¢wÂ¢w Duplicate / spam prevention variables Â¢wÂ¢w
     let lastScanTime = 0;
     let lastDuplicateAlertTime = 0;
     const MIN_TIME_BETWEEN_SCANS_MS = 1000;      // ignore anything faster than this
@@ -93,7 +93,7 @@ if ('serviceWorker' in navigator) {
     function updateUI() {
       listUl.innerHTML = '';
       attendanceData.forEach(entry => {
-        listUl.innerHTML += `<li style="padding:6px 0; border-bottom:1px solid #eee;">${entry.Name} ¡X ${entry.Timestamp}</li>`;
+        listUl.innerHTML += `<li style="padding:6px 0; border-bottom:1px solid #eee;">${entry.Name} Â¡X ${entry.Timestamp}</li>`;
       });
       countSpan.textContent = attendanceData.length;
     }
@@ -111,7 +111,7 @@ if ('serviceWorker' in navigator) {
 
       // 1. Global minimum time between any two successful decodes
       if (now - lastScanTime < MIN_TIME_BETWEEN_SCANS_MS) {
-        return; // too fast ¡÷ ignore silently
+        return; // too fast Â¡Ã· ignore silently
       }
       lastScanTime = now;
 
@@ -138,18 +138,18 @@ if ('serviceWorker' in navigator) {
         lastDuplicateAlertTime = now;
 
         statusDiv.style.color = 'orange';
-        statusDiv.textContent = 'Duplicate detected ¡V record not added';
+        statusDiv.textContent = 'Duplicate detected Â¡V record not added';
         setTimeout(() => { statusDiv.textContent = ''; }, 4000);
 
         return; // do NOT add duplicate
       }
 
-      // ¢w¢w New valid entry ¢w¢w
+      // Â¢wÂ¢w New valid entry Â¢wÂ¢w
       const timestamp = new Date().toLocaleString('en-US', { timeZone: 'Asia/Hong_Kong' });
       const entry = { Name: trimmed, Timestamp: timestamp };
       attendanceData.push(entry);
 
-      listUl.innerHTML += `<li style="padding:6px 0; border-bottom:1px solid #eee;">${entry.Name} ¡X ${entry.Timestamp}</li>`;
+      listUl.innerHTML += `<li style="padding:6px 0; border-bottom:1px solid #eee;">${entry.Name} Â¡X ${entry.Timestamp}</li>`;
       countSpan.textContent = attendanceData.length;
 
       statusDiv.style.color = 'green';
@@ -175,7 +175,7 @@ if ('serviceWorker' in navigator) {
         onScanError
       ).catch(err => {
         statusDiv.style.color = 'orange';
-        statusDiv.textContent = 'Rear failed ¡÷ trying front...';
+        statusDiv.textContent = 'Rear failed Â¡Ã· trying front...';
         html5QrcodeScanner.start(
           { facingMode: "user" },
           config,
@@ -184,7 +184,7 @@ if ('serviceWorker' in navigator) {
         ).catch(e => {
           statusDiv.style.color = 'red';
           statusDiv.textContent = 'Camera failed: ' + (e.message || e);
-          alert('Camera issue.\n¡E Use HTTPS (CodePen/GitHub Pages/local server)\n¡E Grant permission\n¡E Close other camera apps');
+          alert('Camera issue.\nÂ¡E Use HTTPS (CodePen/GitHub Pages/local server)\nÂ¡E Grant permission\nÂ¡E Close other camera apps');
         });
       });
     }
@@ -201,9 +201,9 @@ if ('serviceWorker' in navigator) {
       const confirmed = confirm(
         "Are you sure you want to ERASE ALL currently loaded attendance data?\n\n" +
         "This will:\n" +
-        "¡E Clear the list on screen\n" +
-        "¡E Delete the auto-saved data from your browser\n" +
-        "¡E This action CANNOT be undone!\n\n" +
+        "Â¡E Clear the list on screen\n" +
+        "Â¡E Delete the auto-saved data from your browser\n" +
+        "Â¡E This action CANNOT be undone!\n\n" +
         "Only click OK if this is test/practice data."
       );
 
